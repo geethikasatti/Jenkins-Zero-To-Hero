@@ -1,8 +1,7 @@
 pipeline {
   agent {
     docker {
-      // Ensure this Docker image 'abhishekf5/maven-abhishek-docker-agent:v1'
-      // contains JDK 17 or newer, otherwise the Sonar scan will fail!
+      // NOTE: This image MUST contain JDK 17 or newer for Sonar plugin 4.0.0.4121
       image 'abhishekf5/maven-abhishek-docker-agent:v1'
       args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
     }
@@ -10,7 +9,7 @@ pipeline {
   
   // Define variables globally for clarity
   environment {
-    // Lock the Sonar plugin version to avoid compatibility errors (4.0.0.4121 requires JDK 17)
+    // Sonar plugin version that requires JDK 17
     SONAR_PLUGIN_VERSION = '4.0.0.4121' 
     PROJECT_BASE_DIR = 'java-maven-sonar-argocd-helm-k8s/spring-boot-app'
   }
@@ -19,8 +18,8 @@ pipeline {
     stage('Checkout') {
       steps {
         sh 'echo "Starting repository checkout..."'
-        // UNCOMMENT THIS to actually clone your code!
-        // git branch: 'main', url: 'https://github.com/geethikasatti/Jenkins-Zero-To-Hero.git'
+        // 🔑 FIX 1: Uncommented the git step to actually clone the repository
+        git branch: 'main', url: 'https://github.com/geethikasatti/Jenkins-Zero-To-Hero.git'
       }
     }
     
@@ -28,21 +27,17 @@ pipeline {
       steps {
         sh "echo 'Current directory contents:'"
         sh 'ls -ltr'
-        // Use the PROJECT_BASE_DIR variable
         sh "cd ${PROJECT_BASE_DIR} && mvn clean package"
       }
     }
     
     stage('Static Code Analysis') {
       environment {
-        // Ensure this IP is accessible from the Docker agent
         SONAR_URL = "http://54.87.137.4:9000"
       }
       steps {
         withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-          // 🔑 CRITICAL FIX: Explicitly specify the full plugin goal and version 
-          // to fix the "UnsupportedClassVersionError" by avoiding implicit Maven resolution,
-          // and to suppress the plugin version warning.
+          // Explicitly specifying the plugin version (Fixes class version incompatibility if JDK is 17)
           sh "cd ${PROJECT_BASE_DIR} && mvn org.sonarsource.scanner.maven:sonar-maven-plugin:${SONAR_PLUGIN_VERSION}:sonar -Dsonar.login=${SONAR_AUTH_TOKEN} -Dsonar.host.url=${SONAR_URL}"
         }
       }
@@ -51,12 +46,9 @@ pipeline {
     stage('Build and Push Docker Image') {
       environment {
         DOCKER_IMAGE = "abhishekf5/ultimate-cicd:${BUILD_NUMBER}"
-        // DOCKERFILE_LOCATION is not needed if using 'docker build -t . '
-        // REGISTRY_CREDENTIALS is not needed here as 'docker.withRegistry' uses the 'docker-cred' string directly
       }
       steps {
         script {
-          // Build Docker image using the PROJECT_BASE_DIR
           sh "cd ${PROJECT_BASE_DIR} && docker build -t ${DOCKER_IMAGE} ."
           
           def dockerImage = docker.image("${DOCKER_IMAGE}")
@@ -79,11 +71,14 @@ pipeline {
             git config user.email "geethikasatti212@gmail.com"
             git config user.name "geethikasatti"
             
+            # 🔑 FIX 2: Correcting the deployment file path to match the directory structure
+            MANIFEST_DIR="java-maven-sonar-argocd-helm-k8s/spring-boot-app-manifests"
+
             # Use sed to replace the image tag with the current BUILD_NUMBER
-            sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" ${PROJECT_BASE_DIR}-manifests/deployment.yml
+            sed -i "s/replaceImageTag/${BUILD_NUMBER}/g" \${MANIFEST_DIR}/deployment.yml
             
             # Commit and Push the updated file
-            git add ${PROJECT_BASE_DIR}-manifests/deployment.yml
+            git add \${MANIFEST_DIR}/deployment.yml
             git commit -m "Update deployment image to version ${BUILD_NUMBER}"
             git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME} HEAD:main
           """

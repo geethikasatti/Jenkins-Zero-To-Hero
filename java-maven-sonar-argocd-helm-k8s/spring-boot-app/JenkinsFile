@@ -1,47 +1,72 @@
 pipeline {
-  agent {
-    docker {
-      // Now safe to use if it contains Java 11
-      image 'abhishekf5/maven-abhishek-docker-agent:v1'
-      args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
-    }
-  }
-  
-  environment {
-    // UPDATED: Downgraded Sonar plugin to a version compatible with Java 11
-    SONAR_PLUGIN_VERSION = '3.9.1.2184' 
-    PROJECT_BASE_DIR = 'java-maven-sonar-argocd-helm-k8s/spring-boot-app'
-  }
-  
-  stages {
-    // ... (Checkout stage with git command uncommented) ...
-    stage('Checkout') {
-      steps {
-        sh 'echo "Starting repository checkout..."'
-        git branch: 'main', url: 'https://github.com/geethikasatti/Jenkins-Zero-To-Hero.git'
-      }
-    }
-    
-    stage('Build and Test') {
-      steps {
-        sh "echo 'Current directory contents:'"
-        sh 'ls -ltr'
-        sh "cd ${PROJECT_BASE_DIR} && mvn clean package"
-      }
-    }
-    
-    stage('Static Code Analysis') {
-      environment {
-        SONAR_URL = "http://54.87.137.4:9000"
-      }
-      steps {
-        withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-          // Uses the Java 11 compatible version defined above
-          sh "cd ${PROJECT_BASE_DIR} && mvn org.sonarsource.scanner.maven:sonar-maven-plugin:${SONAR_PLUGIN_VERSION}:sonar -Dsonar.login=${SONAR_AUTH_TOKEN} -Dsonar.host.url=${SONAR_URL}"
+    agent {
+        // Use the Docker image as the execution environment for the entire pipeline.
+        // This eliminates the 'docker: not found' error and provides Maven/JDK.
+        docker {
+            image 'abhishekf5/maven-abhishek-docker-agent:v1'
+            // Mounts the host's Docker socket to allow the container to run
+            // Docker commands (e.g., 'docker build', 'docker push') inside the stage.
+            args '--user root -v /var/run/docker.sock:/var/run/docker.sock'
         }
-      }
     }
-    
-    // ... (subsequent stages remain the same) ...
-  }
+
+    environment {
+        // Defines the specific directory containing the application code after checkout.
+        PROJECT_BASE_DIR = 'java-maven-sonar-argocd-helm-k8s/spring-boot-app'
+        
+        // Pinning the Sonar plugin version for Java 11 compatibility.
+        SONAR_PLUGIN_VERSION = '3.9.1.2184'
+        
+        // SonarQube Host URL (Moved out of the stage for general visibility)
+        SONAR_URL = "http://54.87.137.4:9000"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                sh 'echo "Starting repository checkout..."'
+                // Checkout the source code from the specified GitHub repository.
+                git branch: 'main', url: 'https://github.com/geethikasatti/Jenkins-Zero-To-Hero.git'
+            }
+        }
+        
+        stage('Build and Test') {
+            steps {
+                sh "echo 'Current directory contents:'"
+                sh 'ls -ltr'
+                // Run Maven to clean and package the application within the correct directory.
+                sh "cd ${PROJECT_BASE_DIR} && mvn clean package"
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            steps {
+                // Securely use the SonarQube token stored as a Jenkins Secret Text credential.
+                withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
+                    // Run the SonarQube scan using the pinned plugin version.
+                    sh "cd ${PROJECT_BASE_DIR} && mvn org.sonarsource.scanner.maven:sonar-maven-plugin:${SONAR_PLUGIN_VERSION}:sonar -Dsonar.login=${SONAR_AUTH_TOKEN} -Dsonar.host.url=${SONAR_URL}"
+                }
+            }
+        }
+        
+        // --- Placeholder for subsequent Stages ---
+        
+        // stage('Build Docker Image') {
+        //     steps {
+        //         // This step now works because of the mounted docker.sock in the agent args
+        //         sh "cd ${PROJECT_BASE_DIR} && docker build -t my-app:latest ."
+        //     }
+        // }
+        
+        // stage('Push Docker Image') {
+        //     // ... Authentication logic
+        //     steps {
+        //         sh "docker push my-app:latest"
+        //     }
+        // }
+        
+        // stage('Deploy with Helm/ArgoCD') {
+        //     // ... Deployment logic
+        // }
+    }
 }

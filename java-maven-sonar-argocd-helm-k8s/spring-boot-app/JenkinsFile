@@ -13,12 +13,6 @@ pipeline {
     environment {
         // Defines the specific directory containing the application code after checkout.
         PROJECT_BASE_DIR = 'java-maven-sonar-argocd-helm-k8s/spring-boot-app'
-        
-        // Pinning the Sonar plugin version for Java 11 compatibility.
-        SONAR_PLUGIN_VERSION = '3.9.1.2184'
-        
-        // SonarQube Host URL (Moved out of the stage for general visibility)
-        SONAR_URL = "http://54.87.137.4:9000"
     }
 
     stages {
@@ -39,17 +33,9 @@ pipeline {
             }
         }
         
-        stage('Static Code Analysis') {
-            steps {
-                // Securely use the SonarQube token stored as a Jenkins Secret Text credential.
-                withCredentials([string(credentialsId: 'sonarqube', variable: 'SONAR_AUTH_TOKEN')]) {
-                    // Run the SonarQube scan using the pinned plugin version.
-                    sh "cd ${PROJECT_BASE_DIR} && mvn org.sonarsource.scanner.maven:sonar-maven-plugin:${SONAR_PLUGIN_VERSION}:sonar -Dsonar.login=${SONAR_AUTH_TOKEN} -Dsonar.host.url=${SONAR_URL}"
-                }
-            }
-        }
+        // The 'Static Code Analysis' stage has been completely removed.
         
-        // --- Placeholder for subsequent Stages ---
+        // --- Placeholder for subsequent Stages (kept commented out) ---
         
         // stage('Build Docker Image') {
         //     steps {
